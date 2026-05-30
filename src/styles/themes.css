@@ -1,0 +1,83 @@
+/* UI theme variants. Switch by setting [data-ui-theme="..."] on #phone-frame. */
+
+[data-ui-theme='paper'] {
+  --color-paper: #fffaf2;
+  --color-paper-edge: #f1e3d3;
+  --color-ink: #4a3a55;
+  --color-accent-pink: #ff8fb1;
+}
+
+[data-ui-theme='sticker'] {
+  --color-paper: #fff7ff;
+  --color-paper-edge: #ffd9f1;
+  --color-ink: #4f2b6a;
+  --color-accent-pink: #ff6fbf;
+}
+
+[data-ui-theme='pastel-toy'] {
+  --color-paper: #f4faff;
+  --color-paper-edge: #d6e6ff;
+  --color-ink: #354766;
+  --color-accent-pink: #ffa8cc;
+}
+
+[data-ui-theme='invitation'] {
+  --color-paper: #fff8e7;
+  --color-paper-edge: #f5e2b6;
+  --color-ink: #5d4422;
+  --color-accent-pink: #ff8a93;
+}
+
+[data-ui-theme='glitter-card'] {
+  --color-paper: #fff0fb;
+  --color-paper-edge: #f3c8ea;
+  --color-ink: #4a234a;
+  --color-accent-pink: #ff66c4;
+}
+
+/* Goody Bag stamp-card themes — scoped to .goody-bag-wrap so the panel can
+   differ from the global #phone-frame UI theme. */
+.goody-bag-wrap[data-stamp-card-theme='classic'] {
+  --color-paper: #fffaf2;
+  --color-paper-edge: #f1e3d3;
+  --color-ink: #4a3a55;
+  --color-ink-soft: #7d6e89;
+  --color-accent-pink: #ff8fb1;
+  --gb-handle-color: #c8a06a;
+}
+
+.goody-bag-wrap[data-stamp-card-theme='glitter'] {
+  --color-paper: #fff0fb;
+  --color-paper-edge: #f3c8ea;
+  --color-ink: #4a234a;
+  --color-ink-soft: #8a5a8a;
+  --color-accent-pink: #ff66c4;
+  --gb-handle-color: #e8a0d0;
+}
+
+.goody-bag-wrap[data-stamp-card-theme='dinosaur'] {
+  --color-paper: #e8f5e6;
+  --color-paper-edge: #7ec782;
+  --color-ink: #2d4a2e;
+  --color-ink-soft: #5a7a5c;
+  --color-accent-pink: #6dc97a;
+  --gb-handle-color: #8fbc6a;
+}
+
+.goody-bag-wrap[data-stamp-card-theme='space'] {
+  --color-paper: #2a1f4a;
+  --color-paper-edge: #7e6aa8;
+  --color-ink: #e8e0ff;
+  --color-ink-soft: #b8a8d8;
+  --color-accent-pink: #c8b6ff;
+  --gb-handle-color: #9a7ec8;
+}
+
+.goody-bag-wrap[data-stamp-card-theme='picnic'] {
+  --color-paper: #fff4f8;
+  --color-paper-edge: #a3e4c8;
+  --color-ink: #3a5548;
+  --color-ink-soft: #6a8a78;
+  --color-accent-pink: #ff9e7d;
+  --gb-handle-color: #f0b878;
+}
