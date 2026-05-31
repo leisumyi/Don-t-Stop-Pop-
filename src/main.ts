@@ -23,7 +23,7 @@ import { ShopPanel } from './ui/ShopPanel';
 import { StampCardPanel } from './ui/StampCardPanel';
 import { FailScreen } from './ui/FailScreen';
 import { PrestigePanel } from './ui/PrestigePanel';
-import { TutorialOverlay } from './ui/TutorialOverlay';
+import { TutorialOverlay, type TutorialPhase } from './ui/TutorialOverlay';
 import { PhoneFrame } from './ui/PhoneFrame';
 import { MainMenu } from './ui/MainMenu';
 import { calculatePartyBucks, popsByTypeIncrement } from './core/Economy';
@@ -73,6 +73,14 @@ phoneFrame.bindBalloonPaletteSetter((p) => balloons.setPalette(p));
 phoneFrame.bindPopEffectSetter((k) => particles.setEffect(k));
 
 const tutorial = new TutorialOverlay(store);
+const tutorialFlow = {
+  lastPhase: 'inactive' as TutorialPhase,
+  singleBalloonId: 0,
+  singleStoppedAtCenter: false,
+  scriptedSetSpawned: false,
+  escapeBalloonId: 0,
+  poppableBalloonIds: new Set<number>(),
+};
 
 const lastBadgesUnlocked = new Set(store.save.data.badgesUnlocked);
 
@@ -140,9 +148,17 @@ function reopenFailScreenAfterStamp(): void {
 canvas.addEventListener('pointerdown', (e) => {
   const w = scene.renderer.pointerToWorld(canvas, e.clientX, e.clientY);
   if (fsm.state === 'RUNNING') {
-    const popped = balloons.popAt(w.x, w.y);
+    const popped = tutorial.isActive() ? popAtTutorialTarget(w.x, w.y) : balloons.popAt(w.x, w.y);
     if (popped) {
       onPlayerPop(popped, e.clientX, e.clientY);
+      if (
+        tutorial.isActive() &&
+        tutorial.getPhase() === 'single-balloon' &&
+        popped.id === tutorialFlow.singleBalloonId &&
+        popped.justFullyPopped
+      ) {
+        tutorial.advanceFromSingleBalloonPop();
+      }
     }
   } else if (fsm.state === 'MAIN_MENU') {
     menuBalloons.popAt(w.x, w.y);
@@ -162,6 +178,7 @@ function startNewRun(): void {
   balloons.clear();
   failScreen.close();
   failScreenOpen = false;
+  resetTutorialFlow();
   if (fsm.state === 'BOOT' || fsm.state === 'FAILED' || fsm.state === 'MAIN_MENU') {
     if (tutorial.shouldRun()) {
       fsm.transition('RUNNING');
@@ -230,6 +247,7 @@ function onPlayerPop(b: Balloon, clientX?: number, clientY?: number): void {
 }
 
 function onAutoPop(b: Balloon, source: 'dart' | 'puppy'): void {
+  if (tutorial.isActive()) return;
   if (!b.justFullyPopped) {
     onPartialHit(b);
     return;
@@ -370,6 +388,31 @@ function onFail(): void {
 // ----- game loop -----
 const loop = new GameLoop((dt) => {
   if (fsm.state === 'RUNNING') {
+    const tutorialActive = tutorial.isActive();
+    const tutorialPhase = tutorial.getPhase();
+
+    if (tutorialFlow.lastPhase !== tutorialPhase) {
+      if (tutorialPhase === 'single-balloon') {
+        tutorialFlow.singleBalloonId = 0;
+        tutorialFlow.singleStoppedAtCenter = false;
+        tutorialFlow.scriptedSetSpawned = false;
+        tutorialFlow.escapeBalloonId = 0;
+        tutorialFlow.poppableBalloonIds.clear();
+      } else if (tutorialPhase === 'three-balloons') {
+        balloons.clear();
+        tutorialFlow.scriptedSetSpawned = false;
+        tutorialFlow.escapeBalloonId = 0;
+        tutorialFlow.poppableBalloonIds.clear();
+      } else if (tutorialPhase === 'escape-warning') {
+        balloons.clear();
+        tutorial.hideRing();
+      } else if (tutorialPhase === 'inactive') {
+        tutorial.hideRing();
+        resetTutorialFlow();
+      }
+      tutorialFlow.lastPhase = tutorialPhase;
+    }
+
     difficulty.update(dt);
     store.run.stats.elapsed = difficulty.elapsed;
     balloons.setProgressionMultipliers(
@@ -377,24 +420,84 @@ const loop = new GameLoop((dt) => {
       difficulty.getProgressionSpawnFactor(),
     );
 
-    balloons.update(dt, difficulty.phase, (escaped) => {
-      escape.addEscape(escaped.type);
-      if (escaped.position.y > 0) {
-        // brief flash for any escape
-        store.bus.emit('screen:flash', { intensity: 0.3 });
+    balloons.update(
+      dt,
+      difficulty.phase,
+      (escaped) => {
+        if (tutorialActive) {
+          if (tutorialPhase === 'three-balloons' && escaped.id === tutorialFlow.escapeBalloonId) {
+            tutorial.showEscapeWarning();
+            tutorialFlow.escapeBalloonId = 0;
+          }
+          return;
+        }
+        escape.addEscape(escaped.type);
+        if (escaped.position.y > 0) {
+          // brief flash for any escape
+          store.bus.emit('screen:flash', { intensity: 0.3 });
+        }
+      },
+      !tutorialActive,
+    );
+
+    if (tutorialActive) {
+      if (tutorialPhase === 'single-balloon') {
+        let target = balloons.balloons.find((b) => b.id === tutorialFlow.singleBalloonId) ?? null;
+        if (!target) {
+          target = balloons.spawn(difficulty.phase, { type: 'normal', x: 0 });
+          if (target) {
+            target.setVelocity(0, 68);
+            tutorialFlow.singleBalloonId = target.id;
+            tutorialFlow.singleStoppedAtCenter = false;
+          }
+        }
+
+        if (target && !target.popped) {
+          if (!tutorialFlow.singleStoppedAtCenter && target.position.y >= 0) {
+            tutorialFlow.singleStoppedAtCenter = true;
+            target.position.y = 0;
+            target.setVelocity(0, 0);
+            target.mesh.position.set(target.position.x, 0, target.mesh.position.z);
+          }
+          const screen = scene.renderer.worldToClient(canvas, target.position.x, target.position.y);
+          tutorial.showRing(screen.x, screen.y, Math.max(target.halfWidth, target.halfHeight) * 2 + 28);
+        } else {
+          tutorial.hideRing();
+        }
+      } else if (tutorialPhase === 'three-balloons' && !tutorialFlow.scriptedSetSpawned) {
+        const left = balloons.spawn(difficulty.phase, { type: 'normal', x: -95 });
+        const right = balloons.spawn(difficulty.phase, { type: 'normal', x: 95 });
+        const escapeBalloon = balloons.spawn(difficulty.phase, { type: 'normal', x: 0 });
+
+        if (left) {
+          left.setVelocity(0, 52);
+          tutorialFlow.poppableBalloonIds.add(left.id);
+        }
+        if (right) {
+          right.setVelocity(0, 56);
+          tutorialFlow.poppableBalloonIds.add(right.id);
+        }
+        if (escapeBalloon) {
+          escapeBalloon.setVelocity(0, 78);
+          tutorialFlow.escapeBalloonId = escapeBalloon.id;
+        }
+        tutorialFlow.scriptedSetSpawned = true;
       }
-    });
+    } else {
+      tutorial.hideRing();
+    }
 
-    hazards.update(dt, difficulty.phase);
+    if (!tutorialActive) {
+      hazards.update(dt, difficulty.phase);
+      const idleSpeedBonus =
+        store.permanentBoostValue('idle_speed_mult') +
+        badges.getPolishBonusValue('idle_speed_bonus');
+      shop.update(dt, idleSpeedBonus, (b, source) => {
+        if (b) onAutoPop(b, source);
+      });
+    }
+
     combo.update(dt);
-
-    const idleSpeedBonus =
-      store.permanentBoostValue('idle_speed_mult') +
-      badges.getPolishBonusValue('idle_speed_bonus');
-    shop.update(dt, idleSpeedBonus, (b, source) => {
-      if (b) onAutoPop(b, source);
-    });
-
     puppy.update(dt);
     particles.update(dt);
     scene.update(dt);
@@ -414,6 +517,38 @@ const loop = new GameLoop((dt) => {
 
   scene.render();
 });
+
+function resetTutorialFlow(): void {
+  tutorialFlow.lastPhase = 'inactive';
+  tutorialFlow.singleBalloonId = 0;
+  tutorialFlow.singleStoppedAtCenter = false;
+  tutorialFlow.scriptedSetSpawned = false;
+  tutorialFlow.escapeBalloonId = 0;
+  tutorialFlow.poppableBalloonIds.clear();
+}
+
+function popAtTutorialTarget(wx: number, wy: number): Balloon | null {
+  const phase = tutorial.getPhase();
+  if (phase !== 'single-balloon' && phase !== 'three-balloons') return null;
+
+  for (let i = balloons.balloons.length - 1; i >= 0; i--) {
+    const b = balloons.balloons[i];
+    if (b.popped) continue;
+    if (!b.hitTest(wx, wy)) continue;
+
+    if (phase === 'single-balloon') {
+      if (b.id !== tutorialFlow.singleBalloonId) return null;
+      b.hit();
+      return b;
+    }
+
+    if (b.id === tutorialFlow.escapeBalloonId) return null;
+    if (!tutorialFlow.poppableBalloonIds.has(b.id)) return null;
+    b.hit();
+    return b;
+  }
+  return null;
+}
 
 let badgeEvalAccumulator = 0;
 

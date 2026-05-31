@@ -67,7 +67,12 @@ export class BalloonManager {
     this.progressionSpawnFactor = spawnRateMul;
   }
 
-  update(dt: number, phase: DifficultyPhase, onEscape: (b: Balloon) => void): void {
+  update(
+    dt: number,
+    phase: DifficultyPhase,
+    onEscape: (b: Balloon) => void,
+    allowSpawning = true,
+  ): void {
     const effectiveSpeed = this.speedFactor * this.progressionSpeedFactor;
     // tick existing
     for (const b of this.balloons) {
@@ -82,12 +87,14 @@ export class BalloonManager {
     this.cleanup();
 
     // spawn loop
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
-      if (this.balloons.length < phase.maxConcurrent) {
-        this.spawn(phase);
+    if (allowSpawning) {
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0) {
+        if (this.balloons.length < phase.maxConcurrent) {
+          this.spawn(phase);
+        }
+        this.scheduleNextSpawn(phase);
       }
-      this.scheduleNextSpawn(phase);
     }
   }
 

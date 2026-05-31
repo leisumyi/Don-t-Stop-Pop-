@@ -1137,30 +1137,97 @@ body {
 .tutorial-overlay {
   position: absolute;
   inset: 0;
-  z-index: 6;
-  /* The bubble is informational only; let pops/HUD taps pass through so the
-     tutorial can advance (it advances when the player pops a balloon). */
+  z-index: 9;
   pointer-events: none;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  padding: 20px;
+  justify-content: center;
+  padding: 22px;
+}
+
+.tutorial-overlay.is-tappable {
+  pointer-events: auto;
 }
 
 .tutorial-bubble {
-  background: var(--color-paper);
+  pointer-events: none;
+  width: min(92%, 360px);
+  background: linear-gradient(165deg, rgba(255, 250, 242, 0.85) 0%, rgba(255, 240, 246, 0.84) 60%, rgba(255, 233, 242, 0.85) 100%);
+  backdrop-filter: blur(3px);
   border: 3px solid var(--color-paper-edge);
   border-radius: var(--radius-lg);
-  padding: 14px 18px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-ink);
+  padding: 22px 20px 18px;
   text-align: center;
-  margin-bottom: 80px;
-  max-width: 320px;
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    0 18px 36px rgba(74, 58, 85, 0.32),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.58);
   animation: card-pop var(--duration-slow) var(--ease-bounce);
+}
+
+.tutorial-bubble.is-tappable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.tutorial-bubble.is-hidden {
+  display: none;
+}
+
+.tutorial-title {
+  font-size: 27px;
+  line-height: 1.18;
+  font-weight: 800;
+  color: var(--color-accent-pink);
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.96),
+    0 6px 16px rgba(255, 143, 177, 0.35);
+}
+
+.tutorial-hint {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 800;
+  color: var(--color-ink-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.92;
+  animation: tutorial-hint-pulse 1.25s infinite alternate var(--ease-soft);
+}
+
+.tutorial-ring {
+  display: none;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 240, 156, 0.98);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.8),
+    0 0 0 10px rgba(255, 214, 102, 0.35),
+    0 0 20px rgba(255, 171, 102, 0.58);
+  animation: tutorial-ring-pulse 780ms infinite ease-out;
+}
+
+@keyframes tutorial-hint-pulse {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@keyframes tutorial-ring-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.75;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.16);
+    opacity: 0.3;
+  }
 }
 
 /* Badge unlock toast */
