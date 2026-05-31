@@ -459,7 +459,7 @@ const loop = new GameLoop((dt) => {
             target.setVelocity(0, 0);
             target.mesh.position.set(target.position.x, 0, target.mesh.position.z);
           }
-          const screen = scene.renderer.worldToClient(canvas, target.position.x, target.position.y);
+          const screen = scene.renderer.worldToClient(canvas, target.mesh.position.x, target.mesh.position.y);
           tutorial.showRing(screen.x, screen.y, Math.max(target.halfWidth, target.halfHeight) * 2 + 28);
         } else {
           tutorial.hideRing();

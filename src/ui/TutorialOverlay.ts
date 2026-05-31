@@ -48,10 +48,11 @@ export class TutorialOverlay {
   showRing(clientX: number, clientY: number, diameter = 112): void {
     if (!this.active || this.phase !== 'single-balloon') return;
     this.ensureDom();
-    if (!this.ring) return;
+    if (!this.ring || !this.overlay) return;
+    const rect = this.overlay.getBoundingClientRect();
     this.ring.style.display = 'block';
-    this.ring.style.left = `${clientX}px`;
-    this.ring.style.top = `${clientY}px`;
+    this.ring.style.left = `${clientX - rect.left}px`;
+    this.ring.style.top = `${clientY - rect.top}px`;
     this.ring.style.width = `${diameter}px`;
     this.ring.style.height = `${diameter}px`;
   }
