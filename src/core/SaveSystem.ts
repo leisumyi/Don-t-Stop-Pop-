@@ -50,6 +50,7 @@ export function emptySaveData(): SaveData {
     cosmeticsEquipped: {},
     permanentBoosts: [],
     tutorialCompleted: false,
+    tankIntroCompleted: false,
   };
 }
 
@@ -102,6 +103,7 @@ function migrate(raw: unknown): SaveData {
         : {},
     permanentBoosts: Array.isArray(data.permanentBoosts) ? (data.permanentBoosts as string[]) : [],
     tutorialCompleted: !!data.tutorialCompleted,
+    tankIntroCompleted: !!data.tankIntroCompleted,
   };
 }
 

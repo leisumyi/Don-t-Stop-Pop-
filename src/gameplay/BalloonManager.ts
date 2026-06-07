@@ -27,6 +27,8 @@ export class BalloonManager {
   windDirection: -1 | 0 | 1 = 0;
   windStrength = 0;
 
+  private excludedTypes: ReadonlySet<BalloonTypeId> = new Set();
+
   // global speed multiplier (cake freeze)
   speedFactor = 1;
 
@@ -56,6 +58,10 @@ export class BalloonManager {
   setWind(direction: -1 | 0 | 1, strength: number): void {
     this.windDirection = direction;
     this.windStrength = direction * strength;
+  }
+
+  setExcludedTypes(types: ReadonlySet<BalloonTypeId>): void {
+    this.excludedTypes = types;
   }
 
   setGlobalSpeedFactor(factor: number): void {
@@ -136,7 +142,7 @@ export class BalloonManager {
   }
 
   private pickType(phase: DifficultyPhase): BalloonTypeId | null {
-    const enabled = phase.enabledTypes.filter((t) => ALL_BALLOON_TYPES.includes(t));
+    const enabled = phase.enabledTypes.filter((t) => ALL_BALLOON_TYPES.includes(t) && !this.excludedTypes.has(t));
     if (enabled.length === 0) return null;
 
     // Adjust golden weight if bonus active.

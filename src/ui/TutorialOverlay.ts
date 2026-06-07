@@ -4,6 +4,7 @@ export type TutorialPhase = 'inactive' | 'intro' | 'single-balloon' | 'three-bal
 
 export class TutorialOverlay {
   private overlay: HTMLElement | null = null;
+  private ringHost: HTMLElement | null = null;
   private bubble: HTMLElement | null = null;
   private ring: HTMLElement | null = null;
   private phase: TutorialPhase = 'inactive';
@@ -48,8 +49,8 @@ export class TutorialOverlay {
   showRing(clientX: number, clientY: number, diameter = 112): void {
     if (!this.active || this.phase !== 'single-balloon') return;
     this.ensureDom();
-    if (!this.ring || !this.overlay) return;
-    const rect = this.overlay.getBoundingClientRect();
+    if (!this.ring || !this.ringHost) return;
+    const rect = this.ringHost.getBoundingClientRect();
     this.ring.style.display = 'block';
     this.ring.style.left = `${clientX - rect.left}px`;
     this.ring.style.top = `${clientY - rect.top}px`;
@@ -63,16 +64,22 @@ export class TutorialOverlay {
   }
 
   private ensureDom(): void {
-    if (!this.overlay) {
+    if (!this.overlay || !this.bubble) {
       this.overlay = document.createElement('div');
       this.overlay.className = 'tutorial-overlay';
       this.bubble = document.createElement('div');
       this.bubble.className = 'tutorial-bubble';
+      this.overlay.appendChild(this.bubble);
+      document.getElementById('ui-root')!.appendChild(this.overlay);
+    }
+
+    if (!this.ringHost || !this.ring) {
+      this.ringHost = document.createElement('div');
+      this.ringHost.className = 'tutorial-ring-host';
       this.ring = document.createElement('div');
       this.ring.className = 'tutorial-ring';
-      this.overlay.appendChild(this.bubble);
-      this.overlay.appendChild(this.ring);
-      document.getElementById('ui-root')!.appendChild(this.overlay);
+      this.ringHost.appendChild(this.ring);
+      document.getElementById('ui-root')!.appendChild(this.ringHost);
     }
   }
 
@@ -143,7 +150,9 @@ export class TutorialOverlay {
     this.offTap?.();
     this.offTap = undefined;
     this.hideRing();
+    this.ringHost?.remove();
     this.overlay?.remove();
+    this.ringHost = null;
     this.overlay = null;
     this.bubble = null;
     this.ring = null;

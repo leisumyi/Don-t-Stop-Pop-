@@ -307,6 +307,7 @@ body {
   left: 0;
   right: 0;
   bottom: env(safe-area-inset-bottom, 0);
+  z-index: 5;
   padding: 10px 12px 14px;
   display: flex;
   gap: 8px;
@@ -1134,6 +1135,13 @@ body {
 }
 
 /* Tutorial overlay */
+.tutorial-ring-host {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
 .tutorial-overlay {
   position: absolute;
   inset: 0;

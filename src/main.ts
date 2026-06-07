@@ -24,6 +24,7 @@ import { StampCardPanel } from './ui/StampCardPanel';
 import { FailScreen } from './ui/FailScreen';
 import { PrestigePanel } from './ui/PrestigePanel';
 import { TutorialOverlay, type TutorialPhase } from './ui/TutorialOverlay';
+import { BalloonIntroOverlay } from './ui/BalloonIntroOverlay';
 import { PhoneFrame } from './ui/PhoneFrame';
 import { MainMenu } from './ui/MainMenu';
 import { calculatePartyBucks, popsByTypeIncrement } from './core/Economy';
@@ -81,6 +82,57 @@ const tutorialFlow = {
   escapeBalloonId: 0,
   poppableBalloonIds: new Set<number>(),
 };
+const POST_TUTORIAL_ONBOARDING_DURATION_SEC = 10;
+const POST_TUTORIAL_SPAWN_INTERVAL_SEC = 1.1;
+const POST_TUTORIAL_MAX_BALLOONS = 5;
+const POST_TUTORIAL_SPEED_MIN = 52;
+const POST_TUTORIAL_SPEED_MAX = 64;
+const onboardingFlow = {
+  active: false,
+  remainingSec: 0,
+  spawnAccumulator: 0,
+};
+
+type TankIntroState = 'idle' | 'draining' | 'centering' | 'bubble' | 'awaitingPop' | 'done';
+const tankIntro = {
+  state: 'idle' as TankIntroState,
+  balloonId: 0,
+  stoppedAtCenter: false,
+};
+const tankIntroOverlay = new BalloonIntroOverlay();
+const excludeTankType = new Set<BalloonTypeId>(['tank']);
+const excludeNoTypes = new Set<BalloonTypeId>();
+
+function isTankIntroActive(): boolean {
+  return tankIntro.state !== 'idle' && tankIntro.state !== 'done';
+}
+
+function resetTankIntro(): void {
+  tankIntro.state = 'idle';
+  tankIntro.balloonId = 0;
+  tankIntro.stoppedAtCenter = false;
+  tankIntroOverlay.teardown();
+}
+
+function completeTankIntro(): void {
+  tankIntro.state = 'done';
+  tankIntroOverlay.teardown();
+  store.updateSave((s) => {
+    s.tankIntroCompleted = true;
+  });
+}
+
+function popAtTankIntroTarget(wx: number, wy: number): Balloon | null {
+  for (let i = balloons.balloons.length - 1; i >= 0; i--) {
+    const b = balloons.balloons[i];
+    if (b.popped) continue;
+    if (b.id !== tankIntro.balloonId) continue;
+    if (!b.hitTest(wx, wy)) continue;
+    b.hit();
+    return b;
+  }
+  return null;
+}
 
 const lastBadgesUnlocked = new Set(store.save.data.badgesUnlocked);
 
@@ -144,10 +196,62 @@ function reopenFailScreenAfterStamp(): void {
   if (fsm.canTransition('FAILED')) fsm.transition('FAILED');
 }
 
+function startPostTutorialOnboarding(): void {
+  onboardingFlow.active = true;
+  onboardingFlow.remainingSec = POST_TUTORIAL_ONBOARDING_DURATION_SEC;
+  // Spawn quickly so the transition out of tutorial feels immediate.
+  onboardingFlow.spawnAccumulator = POST_TUTORIAL_SPAWN_INTERVAL_SEC;
+}
+
+function stopPostTutorialOnboarding(): void {
+  onboardingFlow.active = false;
+  onboardingFlow.remainingSec = 0;
+  onboardingFlow.spawnAccumulator = 0;
+}
+
+function updatePostTutorialOnboarding(dt: number): void {
+  if (!onboardingFlow.active) return;
+  onboardingFlow.remainingSec = Math.max(0, onboardingFlow.remainingSec - dt);
+  if (onboardingFlow.remainingSec <= 0) {
+    stopPostTutorialOnboarding();
+    return;
+  }
+
+  onboardingFlow.spawnAccumulator += dt;
+  let activeBalloonCount = 0;
+  for (let i = 0; i < balloons.balloons.length; i++) {
+    if (!balloons.balloons[i].popped) activeBalloonCount += 1;
+  }
+
+  while (onboardingFlow.spawnAccumulator >= POST_TUTORIAL_SPAWN_INTERVAL_SEC) {
+    onboardingFlow.spawnAccumulator -= POST_TUTORIAL_SPAWN_INTERVAL_SEC;
+    if (activeBalloonCount >= POST_TUTORIAL_MAX_BALLOONS) continue;
+    const spawned = balloons.spawn(difficulty.phase, { type: 'normal' });
+    if (!spawned) continue;
+    const speed =
+      POST_TUTORIAL_SPEED_MIN + Math.random() * (POST_TUTORIAL_SPEED_MAX - POST_TUTORIAL_SPEED_MIN);
+    spawned.setVelocity(0, speed);
+    activeBalloonCount += 1;
+  }
+}
+
 // Pointer input: convert clientX/Y to world coords and try to pop.
 canvas.addEventListener('pointerdown', (e) => {
   const w = scene.renderer.pointerToWorld(canvas, e.clientX, e.clientY);
   if (fsm.state === 'RUNNING') {
+    if (tankIntro.state === 'centering' || tankIntro.state === 'bubble') {
+      return;
+    }
+    if (tankIntro.state === 'awaitingPop') {
+      const popped = popAtTankIntroTarget(w.x, w.y);
+      if (popped) {
+        onPlayerPop(popped, e.clientX, e.clientY);
+        if (popped.justFullyPopped) {
+          completeTankIntro();
+        }
+      }
+      return;
+    }
     const popped = tutorial.isActive() ? popAtTutorialTarget(w.x, w.y) : balloons.popAt(w.x, w.y);
     if (popped) {
       onPlayerPop(popped, e.clientX, e.clientY);
@@ -167,6 +271,8 @@ canvas.addEventListener('pointerdown', (e) => {
 
 function startNewRun(): void {
   runPaused = false;
+  stopPostTutorialOnboarding();
+  resetTankIntro();
   store.resetRun();
   combo.reset();
   escape.reset();
@@ -247,7 +353,7 @@ function onPlayerPop(b: Balloon, clientX?: number, clientY?: number): void {
 }
 
 function onAutoPop(b: Balloon, source: 'dart' | 'puppy'): void {
-  if (tutorial.isActive()) return;
+  if (tutorial.isActive() || onboardingFlow.active || isTankIntroActive()) return;
   if (!b.justFullyPopped) {
     onPartialHit(b);
     return;
@@ -390,8 +496,11 @@ const loop = new GameLoop((dt) => {
   if (fsm.state === 'RUNNING') {
     const tutorialActive = tutorial.isActive();
     const tutorialPhase = tutorial.getPhase();
+    const tankIntroActive = isTankIntroActive();
+    const guidedPlayActive = tutorialActive || onboardingFlow.active || tankIntroActive;
 
     if (tutorialFlow.lastPhase !== tutorialPhase) {
+      const previousPhase = tutorialFlow.lastPhase;
       if (tutorialPhase === 'single-balloon') {
         tutorialFlow.singleBalloonId = 0;
         tutorialFlow.singleStoppedAtCenter = false;
@@ -408,6 +517,9 @@ const loop = new GameLoop((dt) => {
         tutorial.hideRing();
       } else if (tutorialPhase === 'inactive') {
         tutorial.hideRing();
+        if (previousPhase === 'escape-warning') {
+          startPostTutorialOnboarding();
+        }
         resetTutorialFlow();
       }
       tutorialFlow.lastPhase = tutorialPhase;
@@ -419,12 +531,15 @@ const loop = new GameLoop((dt) => {
       difficulty.getProgressionSpeedFactor(),
       difficulty.getProgressionSpawnFactor(),
     );
+    balloons.setExcludedTypes(
+      store.save.data.tankIntroCompleted ? excludeNoTypes : excludeTankType,
+    );
 
     balloons.update(
       dt,
       difficulty.phase,
       (escaped) => {
-        if (tutorialActive) {
+        if (guidedPlayActive) {
           if (tutorialPhase === 'three-balloons' && escaped.id === tutorialFlow.escapeBalloonId) {
             tutorial.showEscapeWarning();
             tutorialFlow.escapeBalloonId = 0;
@@ -437,7 +552,7 @@ const loop = new GameLoop((dt) => {
           store.bus.emit('screen:flash', { intensity: 0.3 });
         }
       },
-      !tutorialActive,
+      !guidedPlayActive,
     );
 
     if (tutorialActive) {
@@ -460,7 +575,7 @@ const loop = new GameLoop((dt) => {
             target.mesh.position.set(target.position.x, 0, target.mesh.position.z);
           }
           const screen = scene.renderer.worldToClient(canvas, target.mesh.position.x, target.mesh.position.y);
-          tutorial.showRing(screen.x, screen.y, Math.max(target.halfWidth, target.halfHeight) * 2 + 28);
+          tutorial.showRing(screen.x, screen.y, Math.max(target.halfWidth, target.halfHeight) * 2 + 0);
         } else {
           tutorial.hideRing();
         }
@@ -485,9 +600,60 @@ const loop = new GameLoop((dt) => {
       }
     } else {
       tutorial.hideRing();
+      if (onboardingFlow.active) {
+        updatePostTutorialOnboarding(dt);
+      }
     }
 
-    if (!tutorialActive) {
+    if (
+      tankIntro.state === 'idle' &&
+      !store.save.data.tankIntroCompleted &&
+      !tutorialActive &&
+      !onboardingFlow.active &&
+      difficulty.phase.enabledTypes.includes('tank')
+    ) {
+      tankIntro.state = 'draining';
+    }
+
+    if (tankIntro.state === 'draining' && balloons.balloons.length === 0) {
+      const spawned = balloons.spawn(difficulty.phase, { type: 'tank', x: 0 });
+      if (spawned) {
+        spawned.setVelocity(0, 55);
+        tankIntro.balloonId = spawned.id;
+        tankIntro.stoppedAtCenter = false;
+        tankIntro.state = 'centering';
+      }
+    }
+
+    if (tankIntro.state === 'centering') {
+      const target = balloons.balloons.find((b) => b.id === tankIntro.balloonId) ?? null;
+      if (target && !target.popped) {
+        if (!tankIntro.stoppedAtCenter && target.position.y >= 0) {
+          tankIntro.stoppedAtCenter = true;
+          target.position.y = 0;
+          target.setVelocity(0, 0);
+          target.mesh.position.set(target.position.x, 0, target.mesh.position.z);
+          tankIntroOverlay.showBubble(
+            'This balloon needs 3 taps to pop!',
+            'Tap anywhere to continue',
+            () => { tankIntro.state = 'awaitingPop'; },
+          );
+          tankIntro.state = 'bubble';
+        }
+      }
+    }
+
+    if (tankIntro.state === 'bubble' || tankIntro.state === 'awaitingPop') {
+      const target = balloons.balloons.find((b) => b.id === tankIntro.balloonId) ?? null;
+      if (target && !target.popped) {
+        const screen = scene.renderer.worldToClient(canvas, target.mesh.position.x, target.mesh.position.y);
+        tankIntroOverlay.showRing(screen.x, screen.y, Math.max(target.halfWidth, target.halfHeight) * 2);
+      } else {
+        tankIntroOverlay.hideRing();
+      }
+    }
+
+    if (!guidedPlayActive) {
       hazards.update(dt, difficulty.phase);
       const idleSpeedBonus =
         store.permanentBoostValue('idle_speed_mult') +
@@ -509,6 +675,8 @@ const loop = new GameLoop((dt) => {
       evaluateBadges();
     }
   } else {
+    tutorial.hideRing();
+    tankIntroOverlay.hideRing();
     // still tick particles and parallax even when paused so the scene feels alive
     menuBalloons.update(dt);
     particles.update(dt);

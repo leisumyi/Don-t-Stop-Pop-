@@ -201,6 +201,7 @@ export interface SaveData {
   cosmeticsEquipped: Partial<Record<CosmeticCategory, string>>;
   permanentBoosts: string[];
   tutorialCompleted: boolean;
+  tankIntroCompleted: boolean;
 }
 
 export interface FloatingTextRequest {
